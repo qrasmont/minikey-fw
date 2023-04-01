@@ -11,3 +11,5 @@ defmt-rtt = "0.4.0"
 embedded-hal = { version = "0.2.7", features = ["unproven"] }
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
 rp2040-hal = { version = "0.8.0", features = ["critical-section-impl"] }
+usb-device = "0.2.9"
+usbd-hid = "0.6.1"

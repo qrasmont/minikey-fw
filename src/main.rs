@@ -10,6 +10,9 @@ use usb_device::device::{UsbDeviceBuilder, UsbVidPid};
 use usbd_hid::descriptor::SerializedDescriptor;
 use usbd_hid::{descriptor::KeyboardReport, hid_class::HIDClass};
 
+mod keycode;
+use crate::keycode::KeyCode;
+
 const CRYSTAL_FREQUENCY_HZ: u32 = 12_000_000u32;
 
 const USB_POLLING_RATE_MS: u8 = 10;

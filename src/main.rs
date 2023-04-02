@@ -11,7 +11,7 @@ use usbd_hid::descriptor::SerializedDescriptor;
 use usbd_hid::{descriptor::KeyboardReport, hid_class::HIDClass};
 
 mod keycode;
-use crate::keycode::KeyCode;
+mod keypad;
 
 const CRYSTAL_FREQUENCY_HZ: u32 = 12_000_000u32;
 

@@ -4,6 +4,8 @@
 mod keycode;
 mod keypad;
 
+use core::convert::Infallible;
+
 use defmt::*;
 use defmt_rtt as _;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
@@ -27,9 +29,13 @@ static BOOT2: [u8; 256] = rp2040_boot2::BOOT_LOADER_GENERIC_03H;
 const CRYSTAL_FREQUENCY_HZ: u32 = 12_000_000u32;
 
 const USB_POLLING_RATE_MS: u8 = 10;
+const MATRIX_SCAN_US: u32 = 10;
 
 const USB_KBD_VID: u16 = 0x16c0;
 const USB_KBD_PID: u16 = 0x27db;
+
+const ROWS: usize = 4;
+const COLS: usize = 4;
 
 fn send_press(hid: &HIDClass<UsbBus>, key: KeyCode, delay: &mut cortex_m::delay::Delay) {
     let mut report = KeyboardReport {
@@ -46,6 +52,28 @@ fn send_press(hid: &HIDClass<UsbBus>, key: KeyCode, delay: &mut cortex_m::delay:
     report.keycodes[0] = 0;
     hid.push_input(&report).unwrap();
     delay.delay_ms(USB_POLLING_RATE_MS.into());
+}
+
+fn scan_matrix(
+    rows: &[&dyn InputPin<Error = Infallible>],
+    cols: &mut [&mut dyn OutputPin<Error = Infallible>],
+    delay: &mut cortex_m::delay::Delay,
+) -> [[bool; ROWS]; COLS] {
+    let mut matrix: [[bool; ROWS]; COLS] = [[false; ROWS]; COLS];
+
+    for (c, col) in cols.iter_mut().enumerate() {
+        col.set_high().unwrap();
+        delay.delay_us(MATRIX_SCAN_US);
+
+        for (r, row) in rows.iter().enumerate() {
+            matrix[c][r] = row.is_high().unwrap();
+        }
+
+        col.set_low().unwrap();
+        delay.delay_us(MATRIX_SCAN_US);
+    }
+
+    matrix
 }
 
 #[entry]
@@ -80,6 +108,20 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
+    let cols: &mut [&mut dyn OutputPin<Error = Infallible>] = &mut [
+        &mut pins.gpio12.into_push_pull_output(),
+        &mut pins.gpio13.into_push_pull_output(),
+        &mut pins.gpio16.into_push_pull_output(),
+        &mut pins.gpio17.into_push_pull_output(),
+    ];
+
+    let rows: &[&dyn InputPin<Error = Infallible>] = &[
+        &pins.gpio18.into_pull_down_input(),
+        &pins.gpio19.into_pull_down_input(),
+        &pins.gpio20.into_pull_down_input(),
+        &pins.gpio21.into_pull_down_input(),
+    ];
+
     // Bring up the RP2040 USB bus
     let usb = UsbBus::new(
         pac.USBCTRL_REGS,
@@ -106,25 +148,29 @@ fn main() -> ! {
         .build();
 
     let mut led = pins.gpio25.into_push_pull_output();
-
-    let key = pins.gpio0.into_pull_up_input();
-    let mut state = key.is_low().unwrap();
+    let mut state = false;
 
     loop {
         usb_device.poll(&mut [&mut usb_hid]);
 
-        let previous_state = state;
-        state = key.is_low().unwrap();
+        let scanned_matrix = scan_matrix(rows, cols, &mut delay);
 
-        match (previous_state, state) {
-            (false, true) => {
-                led.set_high().unwrap();
-                send_press(&usb_hid, KeyCode::A, &mut delay);
+        for (_, col) in scanned_matrix.iter().enumerate() {
+            for (_, row) in col.iter().enumerate() {
+                let previous_state = state;
+                state = *row;
+
+                match (previous_state, *row) {
+                    (false, true) => {
+                        led.set_high().unwrap();
+                        send_press(&usb_hid, KeyCode::A, &mut delay);
+                    }
+                    (true, false) => {
+                        led.set_low().unwrap();
+                    }
+                    (_, _) => {}
+                }
             }
-            (true, false) => {
-                led.set_low().unwrap();
-            }
-            _ => {}
         }
     }
 }
